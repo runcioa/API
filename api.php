@@ -1,116 +1,124 @@
-<?php
-class Api extends Rest
-{
+<?php 
 
+	class Api extends Rest {
+		
+		public function __construct() {
+			parent::__construct();
+		}
 
-    public $dbConn;
+		public function generateToken() {
+			$email = $this->validateParameter('email', $this->param['email'], STRING);
+			$pass = $this->validateParameter('pass', $this->param['pass'], STRING);
+			try {
+				$stmt = $this->dbConn->prepare("SELECT * FROM users WHERE email = :email AND password = :pass");
+				$stmt->bindParam(":email", $email);
+				$stmt->bindParam(":pass", $pass);
+				$stmt->execute();
+				$user = $stmt->fetch(PDO::FETCH_ASSOC);
+				if(!is_array($user)) {
+					$this->returnResponse(INVALID_USER_PASS, "Email or Password is incorrect.");
+				}
 
-    public function __construct()
-    {
-        parent::__construct();
+				if( $user['active'] == 0 ) {
+					$this->returnResponse(USER_NOT_ACTIVE, "User is not activated. Please contact to admin.");
+				}
 
-        $db = new DbConnect;
-        $this->dbConn = $db->connect();
-    }
+				$paylod = [
+					'iat' => time(),
+					'iss' => 'localhost',
+					'exp' => time() + (15*60),
+					'userId' => $user['id']
+				];
 
-    public function generateToken()
-    {
-        // print_r($this->param);
+				$token = JWT::encode($paylod, SECRETE_KEY);
+				
+				$data = ['token' => $token];
+				$this->returnResponse(SUCCESS_RESPONSE, $data);
+			} catch (Exception $e) {
+				$this->throwError(JWT_PROCESSING_ERROR, $e->getMessage());
+			}
+		}
 
-        // Passo la email alla funzione validateParameter per verificare se è vuota e generare un errore
+		public function addCustomer() {
+			$name = $this->validateParameter('name', $this->param['name'], STRING, false);
+			$email = $this->validateParameter('email', $this->param['email'], STRING, false);
+			$addr = $this->validateParameter('addr', $this->param['addr'], STRING, false);
+			$mobile = $this->validateParameter('mobile', $this->param['mobile'], INTEGER, false);
 
-        $email = $this->validateParameter('email', $this->param['email'], STRING);
+			$cust = new Customer;
+			$cust->setName($name);
+			$cust->setEmail($email);
+			$cust->setAddress($addr);
+			$cust->setMobile($mobile);
+			$cust->setCreatedBy($this->userId);
+			$cust->setCreatedOn(date('Y-m-d'));
 
-        $pass = $this->validateParameter('pass', $this->param['pass'], STRING);
+			if(!$cust->insert()) {
+				$message = 'Failed to insert.';
+			} else {
+				$message = "Inserted successfully.";
+			}
 
-        try {
-            $stmt = $this->dbConn->prepare("SELECT * from users WHERE email = :email AND password = :pass");
+			$this->returnResponse(SUCCESS_RESPONSE, $message);
+		}
 
-            $stmt->bindParam(":email", $email);
-            $stmt->bindParam(":pass", $pass);
+		public function getCustomerDetails() {
+			$customerId = $this->validateParameter('customerId', $this->param['customerId'], INTEGER);
 
-            $stmt->execute();
+			$cust = new Customer;
+			$cust->setId($customerId);
+			$customer = $cust->getCustomerDetailsById();
+			if(!is_array($customer)) {
+				$this->returnResponse(SUCCESS_RESPONSE, ['message' => 'Customer details not found.']);
+			}
 
-            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+			$response['customerId'] 	= $customer['id'];
+			$response['cutomerName'] 	= $customer['name'];
+			$response['email'] 			= $customer['email'];
+			$response['mobile'] 		= $customer['mobile'];
+			$response['address'] 		= $customer['address'];
+			$response['createdBy'] 		= $customer['created_user'];
+			$response['lastUpdatedBy'] 	= $customer['updated_user'];
+			$this->returnResponse(SUCCESS_RESPONSE, $response);
+		}
 
-            if (!is_array($user)) {
-                $this->returnResponse(INVALID_USER_PASS, "Email or password is incorrect");
-            }
+		public function updateCustomer() {
+			$customerId = $this->validateParameter('customerId', $this->param['customerId'], INTEGER);
+			$name = $this->validateParameter('name', $this->param['name'], STRING, false);
+			$addr = $this->validateParameter('addr', $this->param['addr'], STRING, false);
+			$mobile = $this->validateParameter('mobile', $this->param['mobile'], INTEGER, false);
 
-            if ($user['active'] == 0) {
-                $this->returnResponse(USER_NOT_ACTIVE, "User is not activivated. Please contact to admin.");
-            }
+			$cust = new Customer;
+			$cust->setId($customerId);
+			$cust->setName($name);
+			$cust->setAddress($addr);
+			$cust->setMobile($mobile);
+			$cust->setUpdatedBy($this->userId);
+			$cust->setUpdatedOn(date('Y-m-d'));
 
-            $payload = [
-                'iat' => time(),
-                'iss' => 'localhost',
-                'exp' => time() + (15 * 60),
-                'userId' => $user['id']
-            ];
+			if(!$cust->update()) {
+				$message = 'Failed to update.';
+			} else {
+				$message = "Updated successfully.";
+			}
 
-            $token = JWT::encode($payload, SECRETE_KEY);
+			$this->returnResponse(SUCCESS_RESPONSE, $message);
+		}
 
-            $data = ['token' => $token];
+		public function deleteCustomer() {
+			$customerId = $this->validateParameter('customerId', $this->param['customerId'], INTEGER);
 
-            $this->returnResponse(SUCCESS_RESPONSE, $data);
-        } catch (Exception $e) {
+			$cust = new Customer;
+			$cust->setId($customerId);
 
-            $this->throwError(JWT_PROCESSING_ERROR, $e->getMessage());
-        }
-    }
+			if(!$cust->delete()) {
+				$message = 'Failed to delete.';
+			} else {
+				$message = "deleted successfully.";
+			}
 
-    public function addCustomer()
-    {
-        $name = $this->validateParameter('name', $this->param['name'], STRING, false);
-        $email = $this->validateParameter('email', $this->param['email'], STRING, false);
-
-        $addr = $this->validateParameter('addr', $this->param['addr'], STRING, false);
-        $mobile = $this->validateParameter('mobile', $this->param['mobile'], STRING, false);
-
-        try {
-            $token = $this->getBearerToken();
-            $payload = JWT::decode($token, SECRETE_KEY, ['HS256']);
-            print_r($payload->userId);
-
-
-            $stmt = $this->dbConn->prepare("SELECT * from users WHERE id = :userId");
-
-            $stmt->bindParam(":userId", $payload->userId);
-
-            $stmt->execute();
-
-            $user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!is_array($user)) {
-                $this->returnResponse(INVALID_USER_PASS, "This user is not found in our database");
-            }
-
-            if ($user['active'] == 0) {
-                $this->returnResponse(USER_NOT_ACTIVE, "This user may be deactivivated. Please contact to admin.");
-            }
-
-            $cust = new Customer;
-            $cust->setName($name);
-            $cust->setEmail($email);
-            $cust->setAddress($addr);
-            $cust->setMobile($mobile);
-            $cust->setCreatedBy($payload->userId);
-            $cust->setCreatedOn(date('Y-m-d'));
-
-            $booStatus = true;
-
-            if (!$cust->insert()){
-                $errMsg = 'Failed to insert';
-                $booStatus = false;
-            } else {
-                $message = 'Insertd successfully';
-            }
-
-            $this->returnResponse(SUCCESS_RESPONSE, $message);
-
-
-        } catch (Exception $e) {
-            $this->throwError(ACCESS_TOKEN_ERRORS, $e->getMessage());
-        }
-    }
-}
+			$this->returnResponse(SUCCESS_RESPONSE, $message);
+		}
+	}
+	// 9 1.52
+ ?>
