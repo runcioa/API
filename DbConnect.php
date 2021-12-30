@@ -15,11 +15,11 @@ class DbConnect
             $conn = new PDO($this->dns, DB_USER, DB_PASS);
 
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+            return $conn;
         } catch (Exception $e) {
             echo "Database Error: " . $e->getMessage();
         }
     }
 }
 
-$db = new DbConnect;
-$db->connect();

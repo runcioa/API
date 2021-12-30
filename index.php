@@ -4,5 +4,7 @@
 
     $api = new Api;
 
+    $api->processApi();
+
 
 ?>
